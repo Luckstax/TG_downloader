@@ -15,7 +15,7 @@ import re
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, simpledialog, messagebox
+from tkinter import ttk, simpledialog, messagebox, filedialog
 from pathlib import Path
 
 from dotenv import load_dotenv, set_key
@@ -124,7 +124,6 @@ class SettingsWindow(tk.Toplevel):
     def __init__(self, master, on_saved=None):
         super().__init__(master)
         self.title("Configurações")
-        self.geometry("480x420")
         self.resizable(False, False)
         self.configure(bg=BG)
         self.transient(master)
@@ -134,7 +133,25 @@ class SettingsWindow(tk.Toplevel):
         self._build_ui()
         self._load_current()
 
-    def _field(self, parent, label, key, help_text=None, show=None):
+        # Tamanho calculado pelo conteúdo (antes a altura era fixa e cortava
+        # os campos de baixo e os botões Salvar/Cancelar).
+        self.update_idletasks()
+        w = max(480, self.winfo_reqwidth())
+        h = self.winfo_reqheight()
+        x = master.winfo_rootx() + (master.winfo_width() - w) // 2
+        y = master.winfo_rooty() + 40
+        self.geometry(f"{w}x{h}+{max(x, 0)}+{max(y, 0)}")
+
+    def _browse_folder(self, entry):
+        atual = entry.get().strip()
+        pasta = filedialog.askdirectory(
+            title="Escolha a pasta de saída", parent=self,
+            initialdir=atual if atual and os.path.isdir(atual) else None)
+        if pasta:
+            entry.delete(0, "end")
+            entry.insert(0, os.path.normpath(pasta))
+
+    def _field(self, parent, label, key, help_text=None, show=None, browse=False):
         wrap = tk.Frame(parent, bg=BG)
         wrap.pack(fill="x", pady=(0, 10))
         tk.Label(wrap, text=label, font=("Segoe UI", 9, "bold"),
@@ -143,15 +160,35 @@ class SettingsWindow(tk.Toplevel):
             tk.Label(wrap, text=help_text, font=("Segoe UI", 8),
                      bg=BG, fg=MUTED, anchor="w", justify="left",
                      wraplength=440).pack(fill="x")
-        entry = tk.Entry(wrap, font=("Consolas", 10), bg=FRAME_BG, fg=FG,
+        row = tk.Frame(wrap, bg=BG)
+        row.pack(fill="x", pady=(4, 0))
+        entry = tk.Entry(row, font=("Consolas", 10), bg=FRAME_BG, fg=FG,
                           insertbackground=FG, relief="flat", show=show)
-        entry.pack(fill="x", ipady=4, pady=(4, 0))
+        entry.pack(side="left", fill="x", expand=True, ipady=4)
+        if browse:
+            tk.Button(row, text="Procurar...", font=("Segoe UI", 9),
+                      bg="#45475a", fg=FG, relief="flat", padx=10,
+                      cursor="hand2",
+                      command=lambda: self._browse_folder(entry)
+                      ).pack(side="right", padx=(8, 0))
         self.entries[key] = entry
 
     def _build_ui(self):
         P = 16
         tk.Label(self, text="Configurações", font=("Segoe UI", 13, "bold"),
                  bg=BG, fg=ACCENT).pack(pady=(P, 10))
+
+        # Botões empacotados ANTES do corpo, com side="bottom": ficam sempre
+        # visíveis, mesmo que o conteúdo ocupe mais espaço.
+        btn_row = tk.Frame(self, bg=BG)
+        btn_row.pack(side="bottom", fill="x", padx=P, pady=P)
+
+        tk.Button(btn_row, text="Salvar", font=("Segoe UI", 10, "bold"),
+                  bg=ACCENT, fg=BG, relief="flat", padx=16, pady=6,
+                  cursor="hand2", command=self._save).pack(side="right")
+        tk.Button(btn_row, text="Cancelar", font=("Segoe UI", 10),
+                  bg="#45475a", fg=FG, relief="flat", padx=16, pady=6,
+                  cursor="hand2", command=self.destroy).pack(side="right", padx=(0, 8))
 
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=P)
@@ -165,19 +202,9 @@ class SettingsWindow(tk.Toplevel):
         self._field(body, "Limite de mensagens (opcional)", "LIMIT",
                     "Deixe vazio para escanear o canal inteiro.")
         self._field(body, "Pasta de saída", "OUTPUT",
-                    "Onde os vídeos baixados serão salvos.")
+                    "Onde os vídeos baixados serão salvos.", browse=True)
         self._field(body, "Arquivo de sessão", "SESSION",
                     "Nome/caminho do arquivo de sessão do Telethon (sem .session).")
-
-        btn_row = tk.Frame(self, bg=BG)
-        btn_row.pack(fill="x", padx=P, pady=P)
-
-        tk.Button(btn_row, text="Salvar", font=("Segoe UI", 10, "bold"),
-                  bg=ACCENT, fg=BG, relief="flat", padx=16, pady=6,
-                  cursor="hand2", command=self._save).pack(side="right")
-        tk.Button(btn_row, text="Cancelar", font=("Segoe UI", 10),
-                  bg="#45475a", fg=FG, relief="flat", padx=16, pady=6,
-                  cursor="hand2", command=self.destroy).pack(side="right", padx=(0, 8))
 
     def _load_current(self):
         cfg = get_config()
